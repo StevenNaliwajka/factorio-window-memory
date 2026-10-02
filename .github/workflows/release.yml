@@ -1,0 +1,63 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds the zip and opens a draft release to review
+# and publish. Running it by hand just builds the zip as a workflow artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag matches the crate version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages[0].version
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} doesn't match Cargo version $version" }
+
+      # The injection tests use the fwm_hook.dll built next to them in target/release.
+      - run: cargo build --release --locked --workspace
+      - run: cargo test --release --workspace
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages[0].version
+          $name = "factorio-window-memory-v$version-windows-x64"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item target/release/fwm-launch.exe, target/release/fwm_hook.dll, README.md, LICENSE, CHANGELOG.md $name
+          Compress-Archive -Path "$name/*" -DestinationPath "$name.zip"
+          $hashes = Get-FileHash "$name.zip", target/release/fwm-launch.exe, target/release/fwm_hook.dll -Algorithm SHA256
+          $hashes | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path -Leaf $_.Path)" } | Set-Content SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.name }}.zip
+            SHA256SUMS.txt
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" "${{ steps.package.outputs.name }}.zip" SHA256SUMS.txt `
+            --draft --title "${{ github.ref_name }}" --generate-notes

@@ -1,0 +1,11 @@
+# Build output, including the end-to-end test's Factorio data folder (target/e2e)
+/target/
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

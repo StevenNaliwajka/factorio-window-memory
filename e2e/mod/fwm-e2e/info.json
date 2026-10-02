@@ -1,0 +1,9 @@
+{
+  "name": "fwm-e2e",
+  "version": "0.1.0",
+  "title": "factorio-window-memory test driver",
+  "author": "factorio-window-memory",
+  "description": "Opens built-in windows in sequence for the end-to-end test. Only used by e2e/run-e2e.ps1.",
+  "factorio_version": "2.0",
+  "dependencies": ["base"]
+}

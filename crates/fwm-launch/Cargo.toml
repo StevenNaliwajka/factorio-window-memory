@@ -1,0 +1,24 @@
+[package]
+name = "fwm-launch"
+description = "Starts Factorio with fwm_hook.dll injected, or injects it into a running game"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "fwm-launch"
+path = "src/main.rs"
+
+# Stand-in target process for the injection tests (kept out of src/bin, which the monorepo ignores).
+[[bin]]
+name = "fwm-dummy"
+path = "src/dummy.rs"
+test = false
+
+[dependencies]
+fwm-core.workspace = true
+windows-sys.workspace = true
