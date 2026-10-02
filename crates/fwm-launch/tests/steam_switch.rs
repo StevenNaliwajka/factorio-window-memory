@@ -36,6 +36,8 @@ fn run(root: &Path, flag: &str) -> (Option<i32>, String) {
         .arg(root)
         .arg("--fwm-data-dir")
         .arg(&data)
+        // A stand-in Steam restarted by fwm-launch inherits this and stays up 30 s.
+        .env("FWM_DUMMY_MS", "30000")
         .output()
         .expect("run fwm-launch");
     (
@@ -124,12 +126,13 @@ fn restarting_steam_does_not_hold_our_output_open() {
     assert_eq!(code, Some(0), "{out}");
     assert!(out.contains("Steam was restarted"), "{out}");
 
-    // The restarted stand-in sleeps 3 s; if our output had been held open,
-    // run() would only have returned after it exited.
+    // The restarted stand-in stays up 30 s; if our output had been held open,
+    // run() would only have returned after it exited. Count it, then clean up.
     let restarted = Command::new("powershell")
         .args(["-NoProfile", "-Command"])
         .arg(format!(
-            "@(Get-CimInstance Win32_Process -Filter \"Name='steam.exe'\" | Where-Object {{ $_.ExecutablePath -eq '{}' }}).Count",
+            "$p = @(Get-CimInstance Win32_Process -Filter \"Name='steam.exe'\" | Where-Object {{ $_.ExecutablePath -eq '{}' }}); \
+             $p.Count; $p | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}",
             steam.display()
         ))
         .output()
