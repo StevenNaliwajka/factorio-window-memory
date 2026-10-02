@@ -17,7 +17,7 @@ jobs:
     name: Format, lint, build, test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -33,7 +33,7 @@ jobs:
     name: Minimum supported Rust (1.85)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Toolchain as an input, not the ref: Dependabot would "bump" @1.85 as if it were a version.
       - uses: dtolnay/rust-toolchain@master
         with:
