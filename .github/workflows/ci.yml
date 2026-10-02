@@ -34,6 +34,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
+      # Toolchain as an input, not the ref: Dependabot would "bump" @1.85 as if it were a version.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.85'
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --locked
