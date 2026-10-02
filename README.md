@@ -1,10 +1,20 @@
 # factorio-window-memory
 
+[![Latest release](https://img.shields.io/github/v/release/StevenNaliwajka/factorio-window-memory)](https://github.com/StevenNaliwajka/factorio-window-memory/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/StevenNaliwajka/factorio-window-memory/total)](https://github.com/StevenNaliwajka/factorio-window-memory/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)](#install)
+[![Factorio](https://img.shields.io/badge/Factorio-2.0%20%2B%20Space%20Age-f0a030)](#install)
 [![CI](https://github.com/StevenNaliwajka/factorio-window-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/StevenNaliwajka/factorio-window-memory/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Makes Factorio's built-in windows (inventory, chests, machines, production
-stats, ...) open where you last dragged them instead of always centred.
+stats, ...) open where you last dragged them instead of always centred. Each
+kind of window remembers its own spot, across restarts.
+
+**[⬇ Download the latest release](https://github.com/StevenNaliwajka/factorio-window-memory/releases/latest)**,
+double-click `fwm-launch.exe`, choose **Yes**, and start Factorio from Steam.
+
+![Factorio's default centred windows compared with windows reopening where they were dragged](docs/images/before-after.jpg)
 
 Factorio doesn't remember window positions, and its Lua mod API can't move
 built-in windows, so this is a native plugin: a small launcher starts the game
@@ -166,6 +176,7 @@ Logs: `fwm.log` (plugin) and `fwm-launch.log` (launcher), next to `positions.jso
 | `crates/fwm-hook` | the injected DLL: hooks, RTTI reading, logging |
 | `crates/fwm-launch` | the launcher/injector (+ `fwm-dummy`, the injection-test target) |
 | `e2e/` | end-to-end test script and its Factorio test mod |
+| `docs/images/` | README screenshots (taken by the end-to-end test) and the repo's social-preview card |
 
 ## Contributing
 
