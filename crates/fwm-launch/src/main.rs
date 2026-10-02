@@ -1,9 +1,10 @@
-//! Starts Factorio with fwm_hook.dll injected, or injects it into a running game.
-//!
-//! Steam launch option: `"D:\path\to\fwm-launch.exe" %command%`
+//! Starts Factorio with fwm_hook.dll injected, injects it into a running game,
+//! or, double-clicked, turns the plugin on or off by setting Factorio's Steam
+//! launch option to `"<path>\fwm-launch.exe" %command%`.
 #![windows_subsystem = "windows"]
 
 mod inject;
+mod steam_setup;
 
 use fwm_core::args::{self, Command, LaunchOptions};
 use fwm_core::protocol::{self, InitConfig};
@@ -12,21 +13,38 @@ use inject::{Child, OpenedProcess};
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use steam_setup::Switch;
+use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::System::Console::{
     AttachConsole, GetStdHandle, ATTACH_PARENT_PROCESS, STD_OUTPUT_HANDLE,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    MessageBoxW, IDYES, MB_ICONINFORMATION, MB_ICONQUESTION, MB_ICONWARNING, MB_OK, MB_YESNO,
+};
+
+const TITLE: &str = "Factorio window memory";
+/// Whether printed text reaches anyone (a terminal or a pipe); if not, use dialogs.
+static HAS_CONSOLE: AtomicBool = AtomicBool::new(false);
 
 const USAGE: &str = "\
 fwm-launch: open Factorio's windows where you last dragged them
 
 usage:
+  fwm-launch                  turn the plugin on or off (asks first)
+  fwm-launch --install        turn it on: Factorio's Steam launch option
+                              starts the game through fwm-launch
+  fwm-launch --uninstall      turn it off: remove that launch option
   fwm-launch [options] [path\\to\\factorio.exe] [game arguments...]
+  fwm-launch [options] --launch
   fwm-launch [options] --attach [pid]
 
-With no factorio.exe it is found in your Steam library. As a Steam launch
-option use:  \"<path>\\fwm-launch.exe\" %command%
+Turning it on or off restarts Steam if it's open, since Steam only saves
+launch options when it exits. The launch option it sets is
+  \"<path>\\fwm-launch.exe\" %command%
 
 options:
+  --launch              start Factorio (found in your Steam library) with the plugin
   --attach [pid]        inject into an already running game
   --fwm-data-dir <dir>  where positions.json and fwm.log go
                         (default %APPDATA%\\Factorio\\window-memory)
@@ -38,13 +56,16 @@ options:
 ";
 
 fn main() {
-    unsafe {
+    let has_console = unsafe {
         // A GUI-subsystem exe has no console; borrow the terminal's if run from one.
         let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-        if stdout.is_null() {
-            AttachConsole(ATTACH_PARENT_PROCESS);
+        if stdout.is_null() || stdout == INVALID_HANDLE_VALUE {
+            AttachConsole(ATTACH_PARENT_PROCESS) != 0
+        } else {
+            true
         }
-    }
+    };
+    HAS_CONSOLE.store(has_console, Ordering::Relaxed);
     let code = match run() {
         Ok(code) => code,
         Err(message) => {
@@ -58,11 +79,99 @@ fn main() {
 fn run() -> Result<i32, String> {
     match args::parse(std::env::args_os().skip(1))? {
         Command::Help => {
-            println!("{USAGE}");
+            show(&USAGE.replace('\n', "\r\n"), MB_ICONINFORMATION);
             Ok(0)
         }
+        Command::Toggle => toggle(),
+        Command::Install { opts } => switch(Switch::On, &opts),
+        Command::Uninstall { opts } => switch(Switch::Off, &opts),
         Command::Launch { exe, args, opts } => launch(exe, args, opts),
         Command::Attach { pid, opts } => attach(pid, opts),
+    }
+}
+
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(Some(0)).collect()
+}
+
+/// Print if someone can see it, otherwise pop up a dialog.
+fn show(message: &str, icon: u32) {
+    if HAS_CONSOLE.load(Ordering::Relaxed) {
+        println!("{}", message.replace("\r\n", "\n"));
+    } else {
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                wide(message).as_ptr(),
+                wide(TITLE).as_ptr(),
+                MB_OK | icon,
+            )
+        };
+    }
+}
+
+fn ask(question: &str) -> bool {
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            wide(question).as_ptr(),
+            wide(TITLE).as_ptr(),
+            MB_YESNO | MB_ICONQUESTION,
+        ) == IDYES
+    }
+}
+
+/// Double-clicked: offer to turn the plugin on, or off if it's already on.
+fn toggle() -> Result<i32, String> {
+    let opts = LaunchOptions::default();
+    let Some(root) = steam_setup::steam_root(None) else {
+        show("Couldn't find Steam on this PC.", MB_ICONWARNING);
+        return Ok(3);
+    };
+    let question = if steam_setup::is_on(&root) {
+        "Factorio window memory is ON.\n\nTurn it off? Factorio will start normally from Steam again.\n\n(If Steam is open, it restarts to save the setting.)"
+    } else {
+        "Turn on Factorio window memory?\n\nFrom then on, Factorio started from Steam opens its windows where you last dragged them.\n\n(If Steam is open, it restarts to save the setting.)"
+    };
+    if !ask(question) {
+        return Ok(0);
+    }
+    let switch_to = if steam_setup::is_on(&root) {
+        Switch::Off
+    } else {
+        Switch::On
+    };
+    switch(switch_to, &opts)
+}
+
+/// `--install` / `--uninstall` (and the double-click switch).
+fn switch(to: Switch, opts: &LaunchOptions) -> Result<i32, String> {
+    let log = LaunchLog::new(opts);
+    let Some(root) = steam_setup::steam_root(opts.steam_root.as_deref()) else {
+        show("Couldn't find Steam on this PC.", MB_ICONWARNING);
+        return Ok(3);
+    };
+    let launcher = std::env::current_exe().map_err(|e| e.to_string())?;
+    if to == Switch::On {
+        // The launch option points at this exe, so it needs its DLL beside it.
+        dll_path(opts)?;
+    }
+    match steam_setup::apply(&root, to, &launcher) {
+        Ok(lines) => {
+            let summary = lines.join("\n");
+            log.write(&summary);
+            let next = match to {
+                Switch::On => "Start Factorio from Steam as usual. Run this again to turn it off.",
+                Switch::Off => "Factorio starts normally from Steam now.",
+            };
+            show(&format!("{summary}\n\n{next}"), MB_ICONINFORMATION);
+            Ok(0)
+        }
+        Err(e) => {
+            log.write(&e);
+            show(&format!("Nothing was changed:\n\n{e}"), MB_ICONWARNING);
+            Ok(3)
+        }
     }
 }
 
@@ -192,6 +301,11 @@ impl LaunchLog {
 
     fn say(&self, message: &str) {
         println!("fwm-launch: {message}");
+        self.write(message);
+    }
+
+    /// Log only; the caller tells the user some other way.
+    fn write(&self, message: &str) {
         let Some(path) = &self.0 else { return };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);

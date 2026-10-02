@@ -1,6 +1,7 @@
 //! fwm-launch's command line. Steam runs it as `fwm-launch.exe %command%`, so the
 //! game's own exe and arguments arrive after any `--fwm-*` options and are passed
-//! through untouched.
+//! through untouched. Run with no arguments at all (double-clicked), it's the
+//! on/off switch.
 
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::OsStrExt;
@@ -17,6 +18,8 @@ pub struct LaunchOptions {
     /// Start the game window without taking focus (used by the end-to-end test).
     pub no_activate: bool,
     pub verbose: bool,
+    /// Steam install to configure instead of the registered one (used by tests).
+    pub steam_root: Option<PathBuf>,
 }
 
 impl Default for LaunchOptions {
@@ -28,6 +31,7 @@ impl Default for LaunchOptions {
             late_inject: false,
             no_activate: false,
             verbose: false,
+            steam_root: None,
         }
     }
 }
@@ -35,6 +39,16 @@ impl Default for LaunchOptions {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
+    /// No arguments: ask whether to turn the plugin on (or off, if it's on).
+    Toggle,
+    /// Set Factorio's Steam launch option to start through fwm-launch.
+    Install {
+        opts: LaunchOptions,
+    },
+    /// Remove fwm-launch from Factorio's Steam launch option.
+    Uninstall {
+        opts: LaunchOptions,
+    },
     /// `exe` is `None` when it should be found in the Steam library.
     Launch {
         exe: Option<PathBuf>,
@@ -48,11 +62,20 @@ pub enum Command {
     },
 }
 
+enum Mode {
+    Attach(Option<u32>),
+    Install,
+    Uninstall,
+}
+
 /// `args` excludes the launcher's own path.
 pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, String> {
     let mut args = args.into_iter().peekable();
+    if args.peek().is_none() {
+        return Ok(Command::Toggle);
+    }
     let mut opts = LaunchOptions::default();
-    let mut attach: Option<Option<u32>> = None;
+    let mut mode: Option<Mode> = None;
 
     while let Some(arg) = args.peek() {
         let Some(flag) = arg.to_str().map(str::to_owned) else {
@@ -69,7 +92,18 @@ pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, Strin
                 if pid.is_some() {
                     args.next();
                 }
-                attach = Some(pid);
+                mode = Some(Mode::Attach(pid));
+            }
+            "--install" => {
+                args.next();
+                mode = Some(Mode::Install);
+            }
+            "--uninstall" => {
+                args.next();
+                mode = Some(Mode::Uninstall);
+            }
+            "--launch" => {
+                args.next();
             }
             "--fwm-dll" => {
                 args.next();
@@ -78,6 +112,10 @@ pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, Strin
             "--fwm-data-dir" => {
                 args.next();
                 opts.data_dir = Some(value(&mut args, &flag)?.into());
+            }
+            "--fwm-steam-root" => {
+                args.next();
+                opts.steam_root = Some(value(&mut args, &flag)?.into());
             }
             "--fwm-no-wait" => {
                 args.next();
@@ -101,17 +139,23 @@ pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, Strin
     }
 
     let rest: Vec<OsString> = args.collect();
-    if let Some(pid) = attach {
-        if !rest.is_empty() {
-            return Err("--attach doesn't take a game command".into());
+    match mode {
+        Some(_) if !rest.is_empty() => {
+            Err("--attach, --install and --uninstall don't take a game command".into())
         }
-        return Ok(Command::Attach { pid, opts });
+        Some(Mode::Attach(pid)) => Ok(Command::Attach { pid, opts }),
+        Some(Mode::Install) => Ok(Command::Install { opts }),
+        Some(Mode::Uninstall) => Ok(Command::Uninstall { opts }),
+        None => {
+            let (exe, args) = match rest.split_first() {
+                Some((first, tail)) if looks_like_exe(first) => {
+                    (Some(PathBuf::from(first)), tail.to_vec())
+                }
+                _ => (None, rest),
+            };
+            Ok(Command::Launch { exe, args, opts })
+        }
     }
-    let (exe, args) = match rest.split_first() {
-        Some((first, tail)) if looks_like_exe(first) => (Some(PathBuf::from(first)), tail.to_vec()),
-        _ => (None, rest),
-    };
-    Ok(Command::Launch { exe, args, opts })
 }
 
 fn value(args: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<OsString, String> {
@@ -225,15 +269,35 @@ mod tests {
     }
 
     #[test]
-    fn no_arguments_means_find_the_game() {
+    fn no_arguments_means_the_on_off_switch() {
+        assert_eq!(parse(os(&[])).unwrap(), Command::Toggle);
+    }
+
+    #[test]
+    fn launch_finds_the_game() {
         assert_eq!(
-            parse(os(&[])).unwrap(),
+            parse(os(&["--launch"])).unwrap(),
             Command::Launch {
                 exe: None,
                 args: vec![],
                 opts: LaunchOptions::default()
             }
         );
+    }
+
+    #[test]
+    fn install_and_uninstall() {
+        let Command::Install { opts } =
+            parse(os(&["--install", "--fwm-steam-root", r"C:\S"])).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(opts.steam_root, Some(PathBuf::from(r"C:\S")));
+        assert!(matches!(
+            parse(os(&["--uninstall"])).unwrap(),
+            Command::Uninstall { .. }
+        ));
+        assert!(parse(os(&["--install", "factorio.exe"])).is_err());
     }
 
     #[test]

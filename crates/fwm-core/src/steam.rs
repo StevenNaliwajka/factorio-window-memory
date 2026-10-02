@@ -1,4 +1,4 @@
-//! Finding factorio.exe in the Steam libraries.
+//! Finding Steam, its accounts' config files, and factorio.exe.
 
 use std::path::{Path, PathBuf};
 
@@ -7,8 +7,25 @@ use std::path::{Path, PathBuf};
 /// to relaunch it (which would drop the plugin).
 pub const FACTORIO_APP_ID: &str = "427520";
 
-const STEAM_ROOTS: &[&str] = &[r"C:\Program Files (x86)\Steam", r"C:\Program Files\Steam"];
+pub const STEAM_ROOTS: &[&str] = &[r"C:\Program Files (x86)\Steam", r"C:\Program Files\Steam"];
 const FACTORIO_EXE: &str = r"steamapps\common\Factorio\bin\x64\factorio.exe";
+
+/// `(account id, path)` of every account's `localconfig.vdf` under a Steam install.
+pub fn localconfig_files(steam_root: &Path) -> Vec<(String, PathBuf)> {
+    let Ok(entries) = std::fs::read_dir(steam_root.join("userdata")) else {
+        return Vec::new();
+    };
+    let mut files: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path().join(r"config\localconfig.vdf");
+            path.is_file()
+                .then(|| (e.file_name().to_string_lossy().into_owned(), path))
+        })
+        .collect();
+    files.sort();
+    files
+}
 
 /// The `"path"` entries of a `libraryfolders.vdf`.
 pub fn library_paths_from_vdf(text: &str) -> Vec<PathBuf> {

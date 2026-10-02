@@ -4,6 +4,7 @@
 
 pub mod args;
 pub mod geometry;
+pub mod launch_option;
 pub mod pe;
 pub mod protocol;
 pub mod rtti;
@@ -11,3 +12,4 @@ pub mod steam;
 pub mod store;
 pub mod symbols;
 pub mod targets;
+pub mod vdf;

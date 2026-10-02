@@ -17,30 +17,59 @@ Windows, Steam build of Factorio 2.0 (tested on 2.0.77 + Space Age).
 
 ## Install
 
+Requires 64-bit Windows 10 or 11 and Factorio 2.0 from Steam. Nothing else
+needs installing.
+
+It's set and forget: turn it on once, then start Factorio from Steam as usual.
+
 1. Download the latest `factorio-window-memory-*-windows-x64.zip` from
    [Releases](https://github.com/StevenNaliwajka/factorio-window-memory/releases)
-   and extract it anywhere, for example `C:\Tools\factorio-window-memory`.
-2. In Steam: Factorio → Properties → General → Launch options:
+   and extract it to a folder you'll keep, for example
+   `C:\Tools\factorio-window-memory`. Keep `fwm-launch.exe` and `fwm_hook.dll`
+   together.
+2. Double-click `fwm-launch.exe` and choose **Yes** to turn it on.
+3. Start Factorio from Steam as usual.
 
-   ```
-   "C:\Tools\factorio-window-memory\fwm-launch.exe" %command%
-   ```
+Turning it on sets Factorio's Steam launch option to
+`"<folder>\fwm-launch.exe" %command%`, keeping any options you already had.
+Steam only saves launch options when it exits, so if Steam is open it closes and
+reopens. It won't do this while a game is running. The original Steam config is
+kept as `localconfig.vdf.fwm-backup` next to it.
 
-3. Launch Factorio from Steam as usual.
+**To turn it off**, double-click `fwm-launch.exe` again and choose **Yes**. The
+launch option goes back to what it was, and Factorio starts normally. To remove
+it completely, turn it off, then delete the folder and
+`%APPDATA%\Factorio\window-memory`.
+
+If you move the folder, double-click `fwm-launch.exe` in its new place to turn
+it on there. You can also set the launch option by hand in Steam (Factorio →
+Properties → General → Launch options).
+
+The release isn't code-signed, so Windows may treat the download as untrusted.
+Before extracting, right-click the zip → Properties → tick **Unblock**. If
+SmartScreen still warns about an unrecognized app, choose **More info → Run
+anyway**. The release page lists SHA-256 checksums if you want to verify the
+download.
+
+To check it's working, look at `%APPDATA%\Factorio\window-memory\fwm.log`
+after starting the game; it should say `hooks installed`.
 
 To build from source instead (see [CONTRIBUTING.md](CONTRIBUTING.md) for the
-toolchain), run:
+toolchain), run this; it also turns the plugin on:
 
 ```powershell
 .\install.ps1                                         # %LOCALAPPDATA%\Programs\factorio-window-memory
 .\install.ps1 -Destination C:\Tools\factorio-window-memory
+.\install.ps1 -SkipSteam                              # copy only, leave Steam alone
 ```
 
-Other ways to start it:
+All commands:
 
 | Command | Does |
 | --- | --- |
-| `fwm-launch.exe` | finds Factorio in your Steam library and starts it with the plugin |
+| `fwm-launch.exe` | asks to turn the plugin on, or off if it's on |
+| `fwm-launch.exe --install` / `--uninstall` | turns it on / off without asking |
+| `fwm-launch.exe --launch` | starts Factorio with the plugin once, without changing Steam |
 | `fwm-launch.exe --attach` | loads the plugin into a game that's already running |
 | `fwm-launch.exe --help` | all options |
 
@@ -105,6 +134,10 @@ Logs: `fwm.log` (plugin) and `fwm-launch.log` (launcher), next to `positions.jso
   none of the required hooks is folded, and its GUID/age match `factorio.exe`.
 - **Injection:** the real DLL is injected into a stand-in process, both at startup
   and after it's running, and its error comes back through the launcher.
+- **Steam switch:** `--install` and `--uninstall` run against a fake Steam folder,
+  and turning off must restore the config exactly. A read-only check confirms
+  this PC's real `localconfig.vdf` files are reproduced byte for byte by the
+  editor.
 - **End-to-end** (`e2e\run-e2e.ps1`): runs the real game twice in an isolated data
   folder under `target\e2e`. It has its own config, saves and mods, audio off, and
   an unfocused window. A test mod opens the inventory, chest, assembler, furnace
