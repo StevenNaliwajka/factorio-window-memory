@@ -18,15 +18,25 @@
          every window opens at its seeded spot.
 
   Screenshots of every step land in target\e2e\run1 and target\e2e\run2.
+
+.PARAMETER LauncherPath
+  Test this fwm-launch.exe (with fwm_hook.dll beside it) instead of building
+  target\release, e.g. an extracted release zip.
 #>
 param(
     [switch]$SkipBuild,
+    [string]$LauncherPath,
     [int]$TimeoutSeconds = 300
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
-$Launcher = Join-Path $Root 'target\release\fwm-launch.exe'
+if ($LauncherPath) {
+    $Launcher = (Resolve-Path $LauncherPath).Path
+    $SkipBuild = $true
+} else {
+    $Launcher = Join-Path $Root 'target\release\fwm-launch.exe'
+}
 $Work = Join-Path $Root 'target\e2e'
 $Data = Join-Path $Work 'data'
 $FwmDir = Join-Path $Work 'fwm'
@@ -162,6 +172,7 @@ function Invoke-Drag($hwnd, $fromX, $fromY, $toX, $toY, [switch]$Burst) {
 $Factorio = Find-Factorio
 $script:PreexistingPids = @(Get-Process -Name factorio -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 Write-Host "factorio: $Factorio"
+Write-Host "launcher: $Launcher"
 if ($PreexistingPids.Count) { Write-Host "already running (left alone): $($PreexistingPids -join ', ')" }
 
 if (-not $SkipBuild) {
