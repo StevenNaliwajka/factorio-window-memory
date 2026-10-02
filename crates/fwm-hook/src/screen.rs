@@ -2,7 +2,8 @@
 
 use fwm_core::geometry::Size;
 use std::sync::atomic::{AtomicIsize, Ordering::Relaxed};
-use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE};
+use windows_sys::core::BOOL;
+use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
 use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClientRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible,

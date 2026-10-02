@@ -12,7 +12,8 @@ mod screen;
 
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use windows_sys::Win32::Foundation::{BOOL, HMODULE, TRUE};
+use windows_sys::core::BOOL;
+use windows_sys::Win32::Foundation::{HMODULE, TRUE};
 use windows_sys::Win32::System::LibraryLoader::DisableThreadLibraryCalls;
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 
